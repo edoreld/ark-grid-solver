@@ -4,6 +4,12 @@ export default defineNuxtConfig({
     '@nuxt/ui'
   ],
 
+  ssr: false,
+  
+  app: {
+    baseURL: '/ark-grid-solver/'
+  },
+
   devtools: {
     enabled: true
   },
