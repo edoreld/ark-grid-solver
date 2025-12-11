@@ -2,6 +2,9 @@
 import type { Core, CoreRarity, CoreType, Astrogem } from '~/types/arkgrid'
 import { CORE_CONFIG, CORE_ICONS, calculateTotalWillpower, calculateTotalPoints, getBreakpointsHit } from '~/types/arkgrid'
 
+const config = useRuntimeConfig()
+const baseURL = config.app.baseURL
+
 const props = defineProps<{
   core: Core
   showResults?: boolean
@@ -75,7 +78,7 @@ function getBreakpointStatus(bp: number): 'hit' | 'next' | 'far' {
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
           <img
-            :src="CORE_ICONS[core.type]"
+            :src="baseURL + CORE_ICONS[core.type]"
             :alt="core.type"
             class="size-5"
           >

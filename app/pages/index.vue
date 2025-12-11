@@ -2,6 +2,9 @@
 import type { Core, Astrogem, SolverResult, CoreType, AstrogemCategory } from '~/types/arkgrid'
 import { createEmptyCore, createEmptyAstrogem, getCoreSimpleIcon } from '~/types/arkgrid'
 
+const config = useRuntimeConfig()
+const baseURL = config.app.baseURL
+
 const { solveArkGrid, getMaxPossibleScore } = useArkGridSolver()
 
 const STORAGE_KEY_CORES = 'arkgrid-cores'
@@ -448,7 +451,7 @@ function resetAll() {
                 <div class="flex items-center justify-between mb-2">
                   <div class="flex items-center gap-2">
                     <img
-                      :src="getCoreSimpleIcon(cores.find(c => c.id === result.coreId)?.type as CoreType)"
+                      :src="baseURL + getCoreSimpleIcon(cores.find(c => c.id === result.coreId)?.type as CoreType)"
                       :alt="cores.find(c => c.id === result.coreId)?.type"
                       class="size-5"
                     >

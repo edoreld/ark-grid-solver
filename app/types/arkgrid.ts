@@ -55,18 +55,18 @@ export const CORE_CATEGORIES: Record<CoreType, AstrogemCategory> = {
 }
 
 export const CORE_ICONS: Record<CoreType, string> = {
-  'Order of the Sun': '/images/core_order_sun.png',
-  'Order of the Moon': '/images/core_order_moon.png',
-  'Order of the Star': '/images/core_order_star.png',
-  'Chaos of the Sun': '/images/core_chaos_sun.png',
-  'Chaos of the Moon': '/images/core_chaos_moon.png',
-  'Chaos of the Star': '/images/core_chaos_star.png'
+  'Order of the Sun': 'images/core_order_sun.png',
+  'Order of the Moon': 'images/core_order_moon.png',
+  'Order of the Star': 'images/core_order_star.png',
+  'Chaos of the Sun': 'images/core_chaos_sun.png',
+  'Chaos of the Moon': 'images/core_chaos_moon.png',
+  'Chaos of the Star': 'images/core_chaos_star.png'
 }
 
 export function getCoreSimpleIcon(type: CoreType): string {
-  if (type.includes('Sun')) return '/images/sun.png'
-  if (type.includes('Moon')) return '/images/moon.png'
-  return '/images/star.png'
+  if (type.includes('Sun')) return 'images/sun.png'
+  if (type.includes('Moon')) return 'images/moon.png'
+  return 'images/star.png'
 }
 
 export function generateId(): string {
