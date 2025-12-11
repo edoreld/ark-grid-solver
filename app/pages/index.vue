@@ -245,7 +245,7 @@ function resetAll() {
         color="info"
         variant="subtle"
         title="How to use"
-        description="Add your cores (up to 6), then add all your available astrogems. Click 'Calculate Optimal Assignment' to find the best assignment that maximizes your breakpoint scores. Priority is given to 14p and 17p breakpoints. This page saves all your cores and gems, so you can come back to it at a later time."
+        description="Add your cores (up to 6), then add all your available astrogems. Click 'Calculate Optimal Assignment' to find the best assignment that maximizes your breakpoint scores. Priority is given to 14p and 17p breakpoints. It also prioritizes Order Sun and Order Moon's Destiny effect synergy. This page saves all your cores and gems, so you can come back to it at a later time."
         class="mb-6"
       />
 

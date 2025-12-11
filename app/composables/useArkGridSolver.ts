@@ -1,5 +1,32 @@
 import type { Core, Astrogem, SolverResult, CoreRarity } from '~/types/arkgrid'
-import { CORE_CONFIG, BREAKPOINT_WEIGHTS, getCoreCategory, calculateTotalWillpower, calculateTotalPoints, getBreakpointsHit, calculateScore } from '~/types/arkgrid'
+import { CORE_CONFIG, BREAKPOINT_WEIGHTS, SUN_MOON_DESTINY_BONUS, getCoreCategory, calculateTotalWillpower, calculateTotalPoints, getBreakpointsHit, calculateScore } from '~/types/arkgrid'
+
+function isOrderSunCore(core: Core): boolean {
+  return core.type === 'Order of the Sun'
+}
+
+function isOrderMoonCore(core: Core): boolean {
+  return core.type === 'Order of the Moon'
+}
+
+function calculateDestinyBonus(cores: Core[], assignment: Map<string, Astrogem[]>): number {
+  const sunCore = cores.find(c => isOrderSunCore(c))
+  const moonCore = cores.find(c => isOrderMoonCore(c))
+
+  if (!sunCore || !moonCore) return 0
+
+  const sunGems = assignment.get(sunCore.id) || []
+  const moonGems = assignment.get(moonCore.id) || []
+
+  const sunPoints = calculateTotalPoints(sunGems)
+  const moonPoints = calculateTotalPoints(moonGems)
+
+  if (sunPoints >= 14 && moonPoints >= 14) {
+    return SUN_MOON_DESTINY_BONUS
+  }
+
+  return 0
+}
 
 function findValidCombinations(
   core: Core,
@@ -40,11 +67,6 @@ function findValidCombinations(
   return validCombinations
 }
 
-function scoreCombination(astrogems: Astrogem[], rarity: CoreRarity): number {
-  const totalPoints = calculateTotalPoints(astrogems)
-  return calculateScore(totalPoints, rarity)
-}
-
 export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverResult[] {
   if (cores.length === 0) return []
 
@@ -55,7 +77,12 @@ export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverRes
   const orderResults = solveCategoryOptimal(orderCores, orderAstrogems)
   const chaosResults = solveCategoryOptimal(chaosCores, chaosAstrogems)
 
-  return [...orderResults, ...chaosResults]
+  const resultsMap = new Map<string, SolverResult>()
+  for (const result of [...orderResults, ...chaosResults]) {
+    resultsMap.set(result.coreId, result)
+  }
+
+  return cores.map(core => resultsMap.get(core.id)!).filter(Boolean)
 }
 
 function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResult[] {
@@ -63,56 +90,57 @@ function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResul
 
   let bestAssignment: Map<string, Astrogem[]> = new Map()
   let bestTotalScore = -1
-  const coreCombinations: Map<string, Astrogem[][]> = new Map()
-  for (const core of cores) {
-    const combinations = findValidCombinations(core, astrogems)
-    coreCombinations.set(core.id, combinations)
-  }
 
-  function search(
-    coreIndex: number,
-    usedGemIds: Set<string>,
-    currentAssignment: Map<string, Astrogem[]>,
-    currentScore: number
-  ) {
-    if (coreIndex >= cores.length) {
-      if (currentScore > bestTotalScore) {
-        bestTotalScore = currentScore
+  const sortedCores = [...cores].sort((a, b) => {
+    const rarityOrder: Record<CoreRarity, number> = { Ancient: 0, Relic: 1, Legendary: 2, Epic: 3 }
+    return rarityOrder[a.rarity] - rarityOrder[b.rarity]
+  })
+
+  const hasOrderSunCore = cores.some(c => isOrderSunCore(c))
+  const hasOrderMoonCore = cores.some(c => isOrderMoonCore(c))
+  const canGetDestinyBonus = hasOrderSunCore && hasOrderMoonCore
+
+  const searchWithSorted = (coreIndex: number, usedGemIds: Set<string>, currentAssignment: Map<string, Astrogem[]>, currentScore: number) => {
+    if (coreIndex === sortedCores.length) {
+      const destinyBonus = calculateDestinyBonus(cores, currentAssignment)
+      const totalScore = currentScore + destinyBonus
+      if (totalScore > bestTotalScore) {
+        bestTotalScore = totalScore
         bestAssignment = new Map(currentAssignment)
       }
       return
     }
 
-    const core = cores[coreIndex]
+    const core = sortedCores[coreIndex]
     if (!core) return
 
-    const combinations = coreCombinations.get(core.id) || [[]]
+    const remainingCores = sortedCores.slice(coreIndex)
+    const maxPossibleRemaining = remainingCores.reduce((sum, c) => {
+      const breakpoints = CORE_CONFIG[c.rarity].breakpoints
+      return sum + breakpoints.reduce((s, bp) => s + (BREAKPOINT_WEIGHTS[bp] || 0), 0)
+    }, 0)
+    const maxDestinyBonus = canGetDestinyBonus ? SUN_MOON_DESTINY_BONUS : 0
+    if (currentScore + maxPossibleRemaining + maxDestinyBonus <= bestTotalScore) {
+      return
+    }
 
-    for (const combo of combinations) {
-      const hasConflict = combo.some(gem => usedGemIds.has(gem.id))
-      if (hasConflict) continue
+    const availableGems = astrogems.filter(gem => !usedGemIds.has(gem.id))
+    const combos = findValidCombinations(core, availableGems)
 
-      const comboScore = scoreCombination(combo, core.rarity)
-      const maxRemainingScore = (cores.length - coreIndex - 1) * 12
-      if (currentScore + comboScore + maxRemainingScore <= bestTotalScore) {
-        continue
-      }
+    for (const combo of combos) {
+      const totalPoints = calculateTotalPoints(combo)
+      const comboScore = calculateScore(totalPoints, core.rarity)
 
       const newUsedIds = new Set(usedGemIds)
       combo.forEach(gem => newUsedIds.add(gem.id))
       currentAssignment.set(core.id, combo)
-      search(coreIndex + 1, newUsedIds, currentAssignment, currentScore + comboScore)
+      searchWithSorted(coreIndex + 1, newUsedIds, currentAssignment, currentScore + comboScore)
 
       currentAssignment.delete(core.id)
     }
   }
 
-  cores.sort((a, b) => {
-    const rarityOrder: Record<CoreRarity, number> = { Ancient: 0, Relic: 1, Legendary: 2, Epic: 3 }
-    return rarityOrder[a.rarity] - rarityOrder[b.rarity]
-  })
-
-  search(0, new Set(), new Map(), 0)
+  searchWithSorted(0, new Set(), new Map(), 0)
 
   const results: SolverResult[] = []
   for (const core of cores) {
@@ -136,10 +164,19 @@ function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResul
 }
 
 export function getMaxPossibleScore(cores: Core[]): number {
-  return cores.reduce((total, core) => {
+  const baseScore = cores.reduce((total, core) => {
     const breakpoints = CORE_CONFIG[core.rarity].breakpoints
     return total + breakpoints.reduce((sum, bp) => sum + (BREAKPOINT_WEIGHTS[bp] || 0), 0)
   }, 0)
+
+  const orderCores = cores.filter(core => getCoreCategory(core.type) === 'Order')
+
+  let destinyBonus = 0
+  if (orderCores.some(c => isOrderSunCore(c)) && orderCores.some(c => isOrderMoonCore(c))) {
+    destinyBonus += SUN_MOON_DESTINY_BONUS
+  }
+
+  return baseScore + destinyBonus
 }
 
 export function useArkGridSolver() {

@@ -44,6 +44,7 @@ export const BREAKPOINT_WEIGHTS: Record<number, number> = {
 }
 
 export const ANCIENT_17P_BONUS = 1.5
+export const SUN_MOON_DESTINY_BONUS = 3
 
 export const CORE_CATEGORIES: Record<CoreType, AstrogemCategory> = {
   'Order of the Sun': 'Order',
