@@ -1,51 +1,126 @@
 <script setup lang="ts">
 import type { Core, Astrogem, SolverResult, CoreType, AstrogemCategory } from '~/types/arkgrid'
-import { createEmptyCore, createEmptyAstrogem, getCoreSimpleIcon } from '~/types/arkgrid'
+import { createEmptyCore, createEmptyAstrogem, getCoreSimpleIcon, generateId } from '~/types/arkgrid'
 
 const config = useRuntimeConfig()
 const baseURL = config.app.baseURL
 
 const { solveArkGrid, getMaxPossibleScore } = useArkGridSolver()
 
-const STORAGE_KEY_CORES = 'arkgrid-cores'
-const STORAGE_KEY_ASTROGEMS = 'arkgrid-astrogems'
+const STORAGE_KEY_CHARACTERS = 'arkgrid-characters'
+const STORAGE_KEY_ACTIVE_CHARACTER = 'arkgrid-active-character'
 
-const cores = ref<Core[]>([])
-const astrogems = ref<Astrogem[]>([])
+interface Character {
+  id: string
+  name: string
+  cores: Core[]
+  astrogems: Astrogem[]
+}
+
+const characters = ref<Character[]>([])
+const activeCharacterId = ref<string>('')
 const results = ref<SolverResult[]>([])
 const showResults = ref(false)
 const isCalculating = ref(false)
 const showAddGemModal = ref(false)
 const showResetModal = ref(false)
+const showAddCharacterModal = ref(false)
+const showDeleteCharacterModal = ref(false)
+const newCharacterName = ref('')
+const editingCharacterName = ref(false)
+const editedName = ref('')
 
-onMounted(() => {
-  const savedCores = localStorage.getItem(STORAGE_KEY_CORES)
-  const savedAstrogems = localStorage.getItem(STORAGE_KEY_ASTROGEMS)
+const activeCharacter = computed(() => {
+  return characters.value.find(c => c.id === activeCharacterId.value)
+})
 
-  if (savedCores) {
-    try {
-      cores.value = JSON.parse(savedCores)
-    } catch (e) {
-      console.error('Failed to load cores from localStorage:', e)
-    }
-  }
-
-  if (savedAstrogems) {
-    try {
-      astrogems.value = JSON.parse(savedAstrogems)
-    } catch (e) {
-      console.error('Failed to load astrogems from localStorage:', e)
-    }
+const cores = computed({
+  get: () => activeCharacter.value?.cores || [],
+  set: (value: Core[]) => {
+    const char = activeCharacter.value
+    if (char) char.cores = value
   }
 })
 
-watch(cores, (newCores) => {
-  localStorage.setItem(STORAGE_KEY_CORES, JSON.stringify(newCores))
+const astrogems = computed({
+  get: () => activeCharacter.value?.astrogems || [],
+  set: (value: Astrogem[]) => {
+    const char = activeCharacter.value
+    if (char) char.astrogems = value
+  }
+})
+
+function createDefaultCharacter(name: string = 'Character 1'): Character {
+  return {
+    id: generateId(),
+    name,
+    cores: [],
+    astrogems: []
+  }
+}
+
+onMounted(() => {
+  const savedCharacters = localStorage.getItem(STORAGE_KEY_CHARACTERS)
+  const savedActiveId = localStorage.getItem(STORAGE_KEY_ACTIVE_CHARACTER)
+
+  if (savedCharacters) {
+    try {
+      characters.value = JSON.parse(savedCharacters)
+    } catch (e) {
+      console.error('Failed to load characters from localStorage:', e)
+      characters.value = [createDefaultCharacter()]
+    }
+  } else {
+    characters.value = [createDefaultCharacter()]
+  }
+
+  if (savedActiveId && characters.value.some(c => c.id === savedActiveId)) {
+    activeCharacterId.value = savedActiveId
+  } else if (characters.value.length > 0) {
+    activeCharacterId.value = characters.value[0]!.id
+  }
+})
+
+watch(characters, (newCharacters) => {
+  localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(newCharacters))
 }, { deep: true })
 
-watch(astrogems, (newAstrogems) => {
-  localStorage.setItem(STORAGE_KEY_ASTROGEMS, JSON.stringify(newAstrogems))
-}, { deep: true })
+watch(activeCharacterId, (newId) => {
+  localStorage.setItem(STORAGE_KEY_ACTIVE_CHARACTER, newId)
+  showResults.value = false
+  results.value = []
+})
+
+function addCharacter() {
+  const name = newCharacterName.value.trim() || `Character ${characters.value.length + 1}`
+  const newChar = createDefaultCharacter(name)
+  characters.value.push(newChar)
+  activeCharacterId.value = newChar.id
+  newCharacterName.value = ''
+  showAddCharacterModal.value = false
+}
+
+function deleteCharacter() {
+  if (characters.value.length <= 1) return
+  const index = characters.value.findIndex(c => c.id === activeCharacterId.value)
+  if (index !== -1) {
+    characters.value.splice(index, 1)
+    activeCharacterId.value = characters.value[0]?.id || ''
+  }
+  showDeleteCharacterModal.value = false
+}
+
+function startEditingName() {
+  editedName.value = activeCharacter.value?.name || ''
+  editingCharacterName.value = true
+}
+
+function saveCharacterName() {
+  if (activeCharacter.value && editedName.value.trim()) {
+    activeCharacter.value.name = editedName.value.trim()
+  }
+  editingCharacterName.value = false
+}
 
 const availableCoreTypes = computed(() => {
   const usedTypes = cores.value.map(c => c.type)
@@ -61,36 +136,41 @@ const availableCoreTypes = computed(() => {
 })
 
 function addCore() {
-  if (cores.value.length >= 6) return
+  if (!activeCharacter.value || cores.value.length >= 6) return
   const nextType = availableCoreTypes.value[0]
   if (!nextType) return
-  cores.value.push(createEmptyCore(nextType))
+  activeCharacter.value.cores.push(createEmptyCore(nextType))
   showResults.value = false
 }
 
 function removeCore(index: number) {
-  cores.value.splice(index, 1)
+  if (!activeCharacter.value) return
+  activeCharacter.value.cores.splice(index, 1)
   showResults.value = false
 }
 
 function updateCore(index: number, core: Core) {
-  cores.value[index] = core
+  if (!activeCharacter.value) return
+  activeCharacter.value.cores[index] = core
   showResults.value = false
 }
 
 function addAstrogem(category: AstrogemCategory) {
-  astrogems.value.push(createEmptyAstrogem(category))
+  if (!activeCharacter.value) return
+  activeCharacter.value.astrogems.push(createEmptyAstrogem(category))
   showResults.value = false
   showAddGemModal.value = false
 }
 
 function removeAstrogem(index: number) {
-  astrogems.value.splice(index, 1)
+  if (!activeCharacter.value) return
+  activeCharacter.value.astrogems.splice(index, 1)
   showResults.value = false
 }
 
 function updateAstrogem(index: number, gem: Astrogem) {
-  astrogems.value[index] = gem
+  if (!activeCharacter.value) return
+  activeCharacter.value.astrogems[index] = gem
   showResults.value = false
 }
 
@@ -124,8 +204,9 @@ const totalScore = computed(() => results.value.reduce((sum, r) => sum + r.score
 const maxPossible = computed(() => getMaxPossibleScore(cores.value))
 
 function resetAll() {
-  cores.value = []
-  astrogems.value = []
+  if (!activeCharacter.value) return
+  activeCharacter.value.cores = []
+  activeCharacter.value.astrogems = []
   results.value = []
   showResults.value = false
   showResetModal.value = false
@@ -145,6 +226,18 @@ function resetAll() {
         <p class="text-gray-800 dark:text-gray-600">
           by poyo age 6
         </p>
+        <a
+          href="https://ko-fi.com/poyoanon"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-block mt-2"
+        >
+          <img
+            :src="baseURL + 'images/kofilogo.png'"
+            alt="Support me on Ko-fi"
+            class="h-8"
+          >
+        </a>
       </div>
 
       <UAlert
@@ -155,6 +248,80 @@ function resetAll() {
         description="Add your cores (up to 6), then add all your available astrogems. Click 'Calculate Optimal Assignment' to find the best assignment that maximizes your breakpoint scores. Priority is given to 14p and 17p breakpoints. This page saves all your cores and gems, so you can come back to it at a later time."
         class="mb-6"
       />
+
+      <div class="mb-6">
+        <h2 class="text-lg font-semibold flex items-center gap-2 mb-3">
+          <UIcon name="i-lucide-users" />
+          Characters
+        </h2>
+        <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-1 flex-wrap">
+            <UButton
+              v-for="char in characters"
+              :key="char.id"
+              :color="char.id === activeCharacterId ? 'primary' : 'neutral'"
+              :variant="char.id === activeCharacterId ? 'solid' : 'outline'"
+              size="sm"
+              @click="activeCharacterId = char.id"
+            >
+              {{ char.name }}
+            </UButton>
+          </div>
+          <UButton
+            icon="i-lucide-plus"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            @click="showAddCharacterModal = true"
+          />
+        </div>
+
+        <div
+          v-if="activeCharacter"
+          class="mt-2 flex items-center gap-2"
+        >
+          <template v-if="editingCharacterName">
+            <UInput
+              v-model="editedName"
+              size="sm"
+              placeholder="Character name"
+              class="w-48"
+              @keyup.enter="saveCharacterName"
+            />
+            <UButton
+              icon="i-lucide-check"
+              color="success"
+              variant="ghost"
+              size="xs"
+              @click="saveCharacterName"
+            />
+            <UButton
+              icon="i-lucide-x"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="editingCharacterName = false"
+            />
+          </template>
+          <template v-else>
+            <UButton
+              icon="i-lucide-pencil"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              @click="startEditingName"
+            />
+            <UButton
+              v-if="characters.length > 1"
+              icon="i-lucide-trash-2"
+              color="error"
+              variant="ghost"
+              size="xs"
+              @click="showDeleteCharacterModal = true"
+            />
+          </template>
+        </div>
+      </div>
 
       <div class="grid lg:grid-cols-2 gap-6">
         <div class="space-y-4">
@@ -537,6 +704,90 @@ function resetAll() {
           </div>
         </UCard>
       </div>
+
+      <UModal v-model:open="showAddCharacterModal">
+        <template #content>
+          <UCard>
+            <template #header>
+              <div class="flex items-center justify-between">
+                <h3 class="text-lg font-semibold">
+                  Add New Character
+                </h3>
+                <UButton
+                  icon="i-lucide-x"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  @click="showAddCharacterModal = false"
+                />
+              </div>
+            </template>
+
+            <UFormField label="Character Name">
+              <UInput
+                v-model="newCharacterName"
+                placeholder="Enter character name"
+                @keyup.enter="addCharacter"
+              />
+            </UFormField>
+
+            <template #footer>
+              <div class="flex justify-end gap-3">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  @click="showAddCharacterModal = false"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="primary"
+                  @click="addCharacter"
+                >
+                  Add Character
+                </UButton>
+              </div>
+            </template>
+          </UCard>
+        </template>
+      </UModal>
+
+      <UModal v-model:open="showDeleteCharacterModal">
+        <template #content>
+          <UCard :ui="{ root: 'border-2 border-red-500' }">
+            <template #header>
+              <div class="flex items-center gap-2 text-red-500">
+                <UIcon name="i-lucide-alert-triangle" />
+                <h3 class="text-lg font-semibold">
+                  Delete Character?
+                </h3>
+              </div>
+            </template>
+
+            <p class="text-gray-600 dark:text-gray-400">
+              Are you sure you want to delete "{{ activeCharacter?.name }}"? This will permanently delete all their cores and gems.
+            </p>
+
+            <template #footer>
+              <div class="flex justify-end gap-3">
+                <UButton
+                  color="neutral"
+                  variant="outline"
+                  @click="showDeleteCharacterModal = false"
+                >
+                  Cancel
+                </UButton>
+                <UButton
+                  color="error"
+                  @click="deleteCharacter"
+                >
+                  Yes, Delete
+                </UButton>
+              </div>
+            </template>
+          </UCard>
+        </template>
+      </UModal>
     </UContainer>
   </div>
 </template>
