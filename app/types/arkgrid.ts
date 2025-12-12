@@ -8,6 +8,7 @@ export interface Astrogem {
   category: AstrogemCategory
   willpower: number
   points: number
+  quantity?: number
 }
 
 export interface Core {
@@ -90,7 +91,8 @@ export function createEmptyAstrogem(category: AstrogemCategory): Astrogem {
     name: '',
     category,
     willpower: 0,
-    points: 0
+    points: 0,
+    quantity: 1
   }
 }
 

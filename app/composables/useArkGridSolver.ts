@@ -1,5 +1,20 @@
 import type { Core, Astrogem, SolverResult, CoreRarity } from '~/types/arkgrid'
-import { CORE_CONFIG, BREAKPOINT_WEIGHTS, SUN_MOON_DESTINY_BONUS, getCoreCategory, calculateTotalWillpower, calculateTotalPoints, getBreakpointsHit, calculateScore } from '~/types/arkgrid'
+import { CORE_CONFIG, BREAKPOINT_WEIGHTS, SUN_MOON_DESTINY_BONUS, getCoreCategory, calculateTotalWillpower, calculateTotalPoints, getBreakpointsHit, calculateScore, generateId } from '~/types/arkgrid'
+
+function expandAstrogems(astrogems: Astrogem[]): Astrogem[] {
+  const expanded: Astrogem[] = []
+  for (const gem of astrogems) {
+    const qty = gem.quantity ?? 1
+    for (let i = 0; i < qty; i++) {
+      expanded.push({
+        ...gem,
+        id: i === 0 ? gem.id : generateId(),
+        quantity: 1
+      })
+    }
+  }
+  return expanded
+}
 
 function isOrderSunCore(core: Core): boolean {
   return core.type === 'Order of the Sun'
@@ -70,8 +85,10 @@ function findValidCombinations(
 export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverResult[] {
   if (cores.length === 0) return []
 
-  const orderAstrogems = allAstrogems.filter(gem => gem.category === 'Order')
-  const chaosAstrogems = allAstrogems.filter(gem => gem.category === 'Chaos')
+  const expandedAstrogems = expandAstrogems(allAstrogems)
+
+  const orderAstrogems = expandedAstrogems.filter(gem => gem.category === 'Order')
+  const chaosAstrogems = expandedAstrogems.filter(gem => gem.category === 'Chaos')
   const orderCores = cores.filter(core => getCoreCategory(core.type) === 'Order')
   const chaosCores = cores.filter(core => getCoreCategory(core.type) === 'Chaos')
   const orderResults = solveCategoryOptimal(orderCores, orderAstrogems)

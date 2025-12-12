@@ -31,7 +31,13 @@ const categoryColor = computed(() => {
             :class="astrogem.category === 'Order' ? 'text-red-500' : 'text-blue-500'"
             class="size-4"
           />
-          <span class="text-sm font-medium">{{ astrogem.category }} Astrogem</span>
+          <span class="text-sm font-medium">
+            {{ astrogem.category }} Astrogem
+            <span
+              v-if="(astrogem.quantity ?? 1) > 1"
+              class="text-gray-500"
+            >(x{{ astrogem.quantity }})</span>
+          </span>
         </div>
         <UButton
           icon="i-lucide-x"
@@ -42,17 +48,33 @@ const categoryColor = computed(() => {
         />
       </div>
 
-      <UFormField
-        label="Category"
-        size="sm"
-      >
-        <USelect
-          :model-value="astrogem.category"
-          :items="categoryOptions"
+      <div class="grid grid-cols-2 gap-2">
+        <UFormField
+          label="Category"
           size="sm"
-          @update:model-value="updateField('category', $event as AstrogemCategory)"
-        />
-      </UFormField>
+        >
+          <USelect
+            :model-value="astrogem.category"
+            :items="categoryOptions"
+            size="sm"
+            @update:model-value="updateField('category', $event as AstrogemCategory)"
+          />
+        </UFormField>
+
+        <UFormField
+          label="Quantity"
+          size="sm"
+        >
+          <UInput
+            type="number"
+            :model-value="astrogem.quantity ?? 1"
+            :min="1"
+            size="sm"
+            placeholder="1"
+            @update:model-value="updateField('quantity', Math.max(1, Number($event) || 1))"
+          />
+        </UFormField>
+      </div>
 
       <div class="grid grid-cols-2 gap-2">
         <UFormField size="sm">
