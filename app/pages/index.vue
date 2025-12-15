@@ -22,6 +22,7 @@ const activeCharacterId = ref<string>('')
 const results = ref<SolverResult[]>([])
 const showResults = ref(false)
 const isCalculating = ref(false)
+const calculationProgress = ref(0)
 const showAddGemModal = ref(false)
 const showResetModal = ref(false)
 const showAddCharacterModal = ref(false)
@@ -194,18 +195,22 @@ async function calculate() {
   if (cores.value.length === 0 || astrogems.value.length === 0) return
 
   isCalculating.value = true
+  calculationProgress.value = 0
   showResults.value = false
 
-  await new Promise(resolve => setTimeout(resolve, 100))
+  await new Promise(resolve => setTimeout(resolve, 50))
 
   try {
-    results.value = solveArkGrid(cores.value, astrogems.value)
+    results.value = await solveArkGrid(cores.value, astrogems.value, (progress) => {
+      calculationProgress.value = progress
+    })
     showResults.value = true
 
     await nextTick()
     document.getElementById('optimization-results')?.scrollIntoView({ behavior: 'smooth' })
   } finally {
     isCalculating.value = false
+    calculationProgress.value = 0
   }
 }
 
@@ -540,25 +545,39 @@ function resetAll() {
         </template>
       </UModal>
 
-      <div class="mt-8 flex justify-center gap-4">
-        <UButton
-          size="xl"
-          icon="i-lucide-calculator"
-          :loading="isCalculating"
-          :disabled="cores.length === 0 || astrogems.length === 0"
-          @click="calculate"
+      <div class="mt-8 flex flex-col items-center gap-4">
+        <div class="flex justify-center gap-4">
+          <UButton
+            size="xl"
+            icon="i-lucide-calculator"
+            :loading="isCalculating"
+            :disabled="cores.length === 0 || astrogems.length === 0"
+            @click="calculate"
+          >
+            Calculate Optimal Assignment
+          </UButton>
+          <UButton
+            size="xl"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-refresh-cw"
+            @click="showResetModal = true"
+          >
+            Reset All
+          </UButton>
+        </div>
+        <div
+          v-if="isCalculating"
+          class="w-full max-w-md"
         >
-          Calculate Optimal Assignment
-        </UButton>
-        <UButton
-          size="xl"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-refresh-cw"
-          @click="showResetModal = true"
-        >
-          Reset All
-        </UButton>
+          <UProgress
+            :model-value="calculationProgress"
+            size="sm"
+          />
+          <p class="text-center text-sm text-gray-500 mt-2">
+            Finding optimal assignment... {{ calculationProgress }}%
+          </p>
+        </div>
       </div>
 
       <UModal v-model:open="showResetModal">

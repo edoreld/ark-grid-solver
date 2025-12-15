@@ -82,7 +82,13 @@ function findValidCombinations(
   return validCombinations
 }
 
-export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverResult[] {
+export type ProgressCallback = (progress: number) => void
+
+export async function solveArkGrid(
+  cores: Core[],
+  allAstrogems: Astrogem[],
+  onProgress?: ProgressCallback
+): Promise<SolverResult[]> {
   if (cores.length === 0) return []
 
   const expandedAstrogems = expandAstrogems(allAstrogems)
@@ -91,8 +97,32 @@ export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverRes
   const chaosAstrogems = expandedAstrogems.filter(gem => gem.category === 'Chaos')
   const orderCores = cores.filter(core => getCoreCategory(core.type) === 'Order')
   const chaosCores = cores.filter(core => getCoreCategory(core.type) === 'Chaos')
-  const orderResults = solveCategoryOptimal(orderCores, orderAstrogems)
-  const chaosResults = solveCategoryOptimal(chaosCores, chaosAstrogems)
+
+  const orderFirstCoreCombos = orderCores.length > 0
+    ? findValidCombinations(orderCores.sort((a, b) => {
+      const rarityOrder: Record<CoreRarity, number> = { Ancient: 0, Relic: 1, Legendary: 2, Epic: 3 }
+      return rarityOrder[a.rarity] - rarityOrder[b.rarity]
+    })[0]!, orderAstrogems).length
+    : 0
+  const chaosFirstCoreCombos = chaosCores.length > 0
+    ? findValidCombinations(chaosCores.sort((a, b) => {
+      const rarityOrder: Record<CoreRarity, number> = { Ancient: 0, Relic: 1, Legendary: 2, Epic: 3 }
+      return rarityOrder[a.rarity] - rarityOrder[b.rarity]
+    })[0]!, chaosAstrogems).length
+    : 0
+  const totalFirstLevelCombos = orderFirstCoreCombos + chaosFirstCoreCombos
+
+  let completedFirstLevelCombos = 0
+
+  const progressCallback = onProgress
+    ? () => {
+        completedFirstLevelCombos++
+        onProgress(Math.min(100, Math.round((completedFirstLevelCombos / totalFirstLevelCombos) * 100)))
+      }
+    : undefined
+
+  const orderResults = await solveCategoryOptimal(orderCores, orderAstrogems, progressCallback)
+  const chaosResults = await solveCategoryOptimal(chaosCores, chaosAstrogems, progressCallback)
 
   const resultsMap = new Map<string, SolverResult>()
   for (const result of [...orderResults, ...chaosResults]) {
@@ -102,7 +132,11 @@ export function solveArkGrid(cores: Core[], allAstrogems: Astrogem[]): SolverRes
   return cores.map(core => resultsMap.get(core.id)!).filter(Boolean)
 }
 
-function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResult[] {
+async function solveCategoryOptimal(
+  cores: Core[],
+  astrogems: Astrogem[],
+  onFirstLevelComplete?: () => void
+): Promise<SolverResult[]> {
   if (cores.length === 0) return []
 
   let bestAssignment: Map<string, Astrogem[]> = new Map()
@@ -157,7 +191,33 @@ function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResul
     }
   }
 
-  searchWithSorted(0, new Set(), new Map(), 0)
+  const firstCore = sortedCores[0]
+  if (firstCore) {
+    const firstCoreCombos = findValidCombinations(firstCore, astrogems)
+    let comboCount = 0
+
+    for (const combo of firstCoreCombos) {
+      const totalPoints = calculateTotalPoints(combo)
+      const comboScore = calculateScore(totalPoints, firstCore.rarity)
+
+      const usedGemIds = new Set<string>()
+      combo.forEach(gem => usedGemIds.add(gem.id))
+
+      const currentAssignment = new Map<string, Astrogem[]>()
+      currentAssignment.set(firstCore.id, combo)
+
+      searchWithSorted(1, usedGemIds, currentAssignment, comboScore)
+
+      if (onFirstLevelComplete) {
+        onFirstLevelComplete()
+        comboCount++
+        // Only yield to UI every 10 combinations to minimize overhead
+        if (comboCount % 10 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }
+      }
+    }
+  }
 
   const results: SolverResult[] = []
   for (const core of cores) {
