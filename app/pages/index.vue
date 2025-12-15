@@ -30,6 +30,16 @@ const newCharacterName = ref('')
 const editingCharacterName = ref(false)
 const editedName = ref('')
 
+type AstrogemSortOption = 'none' | 'willpower-high' | 'willpower-low' | 'points-high' | 'points-low'
+const astrogemSort = ref<AstrogemSortOption>('none')
+const astrogemSortOptions = [
+  { label: 'Default', value: 'none' },
+  { label: 'Willpower (High → Low)', value: 'willpower-high' },
+  { label: 'Willpower (Low → High)', value: 'willpower-low' },
+  { label: 'Core Points (High → Low)', value: 'points-high' },
+  { label: 'Core Points (Low → High)', value: 'points-low' }
+]
+
 const activeCharacter = computed(() => {
   return characters.value.find(c => c.id === activeCharacterId.value)
 })
@@ -162,16 +172,22 @@ function addAstrogem(category: AstrogemCategory) {
   showAddGemModal.value = false
 }
 
-function removeAstrogem(index: number) {
+function removeAstrogemById(id: string) {
   if (!activeCharacter.value) return
-  activeCharacter.value.astrogems.splice(index, 1)
-  showResults.value = false
+  const index = activeCharacter.value.astrogems.findIndex(g => g.id === id)
+  if (index !== -1) {
+    activeCharacter.value.astrogems.splice(index, 1)
+    showResults.value = false
+  }
 }
 
-function updateAstrogem(index: number, gem: Astrogem) {
+function updateAstrogemById(id: string, gem: Astrogem) {
   if (!activeCharacter.value) return
-  activeCharacter.value.astrogems[index] = gem
-  showResults.value = false
+  const index = activeCharacter.value.astrogems.findIndex(g => g.id === id)
+  if (index !== -1) {
+    activeCharacter.value.astrogems[index] = gem
+    showResults.value = false
+  }
 }
 
 async function calculate() {
@@ -196,6 +212,22 @@ async function calculate() {
 function getResultForCore(coreId: string): SolverResult | undefined {
   return results.value.find(r => r.coreId === coreId)
 }
+
+const sortedAstrogems = computed(() => {
+  const gems = [...astrogems.value]
+  switch (astrogemSort.value) {
+    case 'willpower-high':
+      return gems.sort((a, b) => b.willpower - a.willpower)
+    case 'willpower-low':
+      return gems.sort((a, b) => a.willpower - b.willpower)
+    case 'points-high':
+      return gems.sort((a, b) => b.points - a.points)
+    case 'points-low':
+      return gems.sort((a, b) => a.points - b.points)
+    default:
+      return gems
+  }
+})
 
 const orderAstrogems = computed(() => astrogems.value.filter(g => g.category === 'Order'))
 const chaosAstrogems = computed(() => astrogems.value.filter(g => g.category === 'Chaos'))
@@ -383,7 +415,7 @@ function resetAll() {
         </div>
 
         <div class="space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between flex-wrap gap-2">
             <h2 class="text-xl font-semibold flex items-center gap-2">
               <UIcon name="i-lucide-gem" />
               Astrogems
@@ -394,6 +426,22 @@ function resetAll() {
                 {{ astrogems.length }}
               </UBadge>
             </h2>
+            <div
+              v-if="astrogems.length > 1"
+              class="flex items-center gap-2"
+            >
+              <UIcon
+                name="i-lucide-arrow-up-down"
+                class="size-4 text-gray-500"
+              />
+              <USelect
+                v-model="astrogemSort"
+                :items="astrogemSortOptions"
+                value-key="value"
+                size="sm"
+                class="w-48"
+              />
+            </div>
           </div>
 
           <div
@@ -422,11 +470,11 @@ function resetAll() {
 
           <div class="grid sm:grid-cols-2 gap-3 max-h-[600px] overflow-y-auto">
             <AstrogemCard
-              v-for="(gem, index) in astrogems"
+              v-for="gem in sortedAstrogems"
               :key="gem.id"
               :astrogem="gem"
-              @update:astrogem="updateAstrogem(index, $event)"
-              @remove="removeAstrogem(index)"
+              @update:astrogem="updateAstrogemById(gem.id, $event)"
+              @remove="removeAstrogemById(gem.id)"
             />
 
             <div
