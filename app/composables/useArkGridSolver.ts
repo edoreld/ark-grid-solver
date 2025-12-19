@@ -24,25 +24,6 @@ function isOrderMoonCore(core: Core): boolean {
   return core.type === 'Order of the Moon'
 }
 
-function calculateDestinyBonus(cores: Core[], assignment: Map<string, Astrogem[]>): number {
-  const sunCore = cores.find(c => isOrderSunCore(c))
-  const moonCore = cores.find(c => isOrderMoonCore(c))
-
-  if (!sunCore || !moonCore) return 0
-
-  const sunGems = assignment.get(sunCore.id) || []
-  const moonGems = assignment.get(moonCore.id) || []
-
-  const sunPoints = calculateTotalPoints(sunGems)
-  const moonPoints = calculateTotalPoints(moonGems)
-
-  if (sunPoints >= 14 && moonPoints >= 14) {
-    return SUN_MOON_DESTINY_BONUS
-  }
-
-  return 0
-}
-
 function findValidCombinations(
   core: Core,
   availableAstrogems: Astrogem[],
@@ -117,48 +98,92 @@ function solveCategoryOptimal(cores: Core[], astrogems: Astrogem[]): SolverResul
   const hasOrderSunCore = cores.some(c => isOrderSunCore(c))
   const hasOrderMoonCore = cores.some(c => isOrderMoonCore(c))
   const canGetDestinyBonus = hasOrderSunCore && hasOrderMoonCore
+  const destinyBonusValue = canGetDestinyBonus ? SUN_MOON_DESTINY_BONUS : 0
 
-  const search = (coreIndex: number, usedGemIds: Set<string>, currentAssignment: Map<string, Astrogem[]>, currentScore: number) => {
+  const maxRemainingScores: number[] = new Array(sortedCores.length + 1).fill(0)
+  for (let i = sortedCores.length - 1; i >= 0; i--) {
+    const core = sortedCores[i]!
+    const breakpoints = CORE_CONFIG[core.rarity].breakpoints
+    const coreMaxScore = breakpoints.reduce((s, bp) => s + (BREAKPOINT_WEIGHTS[bp] || 0), 0)
+    maxRemainingScores[i] = maxRemainingScores[i + 1]! + coreMaxScore
+  }
+
+  const gemIndexMap = new Map<string, number>()
+  astrogems.forEach((gem, idx) => gemIndexMap.set(gem.id, idx))
+
+  const allCoreCombos: { gems: Astrogem[], gemIndices: number[], score: number, points: number }[][] = []
+  for (const core of sortedCores) {
+    const combos = findValidCombinations(core, astrogems)
+    const scoredCombos = combos.map((gems) => {
+      const points = calculateTotalPoints(gems)
+      const score = calculateScore(points, core.rarity)
+      const gemIndices = gems.map(g => gemIndexMap.get(g.id)!)
+      return { gems, gemIndices, score, points }
+    })
+    scoredCombos.sort((a, b) => b.score - a.score)
+    allCoreCombos.push(scoredCombos)
+  }
+
+  const usedGems: boolean[] = new Array(astrogems.length).fill(false)
+  const currentAssignment: (Astrogem[] | null)[] = new Array(sortedCores.length).fill(null)
+
+  const search = (coreIndex: number, currentScore: number) => {
     if (coreIndex === sortedCores.length) {
-      const destinyBonus = calculateDestinyBonus(cores, currentAssignment)
-      const totalScore = currentScore + destinyBonus
+      let totalScore = currentScore
+      if (canGetDestinyBonus) {
+        const sunCoreIdx = sortedCores.findIndex(c => isOrderSunCore(c))
+        const moonCoreIdx = sortedCores.findIndex(c => isOrderMoonCore(c))
+        if (sunCoreIdx !== -1 && moonCoreIdx !== -1) {
+          const sunGems = currentAssignment[sunCoreIdx] || []
+          const moonGems = currentAssignment[moonCoreIdx] || []
+          const sunPoints = calculateTotalPoints(sunGems)
+          const moonPoints = calculateTotalPoints(moonGems)
+          if (sunPoints >= 14 && moonPoints >= 14) {
+            totalScore += SUN_MOON_DESTINY_BONUS
+          }
+        }
+      }
       if (totalScore > bestTotalScore) {
         bestTotalScore = totalScore
-        bestAssignment = new Map(currentAssignment)
+        bestAssignment = new Map()
+        sortedCores.forEach((core, idx) => {
+          bestAssignment.set(core.id, currentAssignment[idx] || [])
+        })
       }
       return
     }
 
-    const core = sortedCores[coreIndex]
-    if (!core) return
-
-    const remainingCores = sortedCores.slice(coreIndex)
-    const maxPossibleRemaining = remainingCores.reduce((sum, c) => {
-      const breakpoints = CORE_CONFIG[c.rarity].breakpoints
-      return sum + breakpoints.reduce((s, bp) => s + (BREAKPOINT_WEIGHTS[bp] || 0), 0)
-    }, 0)
-    const maxDestinyBonus = canGetDestinyBonus ? SUN_MOON_DESTINY_BONUS : 0
-    if (currentScore + maxPossibleRemaining + maxDestinyBonus <= bestTotalScore) {
+    if (currentScore + maxRemainingScores[coreIndex]! + destinyBonusValue <= bestTotalScore) {
       return
     }
 
-    const availableGems = astrogems.filter(gem => !usedGemIds.has(gem.id))
-    const combos = findValidCombinations(core, availableGems)
+    const combos = allCoreCombos[coreIndex]!
 
     for (const combo of combos) {
-      const totalPoints = calculateTotalPoints(combo)
-      const comboScore = calculateScore(totalPoints, core.rarity)
+      let hasConflict = false
+      for (const idx of combo.gemIndices) {
+        if (usedGems[idx]) {
+          hasConflict = true
+          break
+        }
+      }
+      if (hasConflict) continue
 
-      const newUsedIds = new Set(usedGemIds)
-      combo.forEach(gem => newUsedIds.add(gem.id))
-      currentAssignment.set(core.id, combo)
-      search(coreIndex + 1, newUsedIds, currentAssignment, currentScore + comboScore)
+      for (const idx of combo.gemIndices) {
+        usedGems[idx] = true
+      }
+      currentAssignment[coreIndex] = combo.gems
 
-      currentAssignment.delete(core.id)
+      search(coreIndex + 1, currentScore + combo.score)
+
+      for (const idx of combo.gemIndices) {
+        usedGems[idx] = false
+      }
+      currentAssignment[coreIndex] = null
     }
   }
 
-  search(0, new Set(), new Map(), 0)
+  search(0, 0)
 
   const results: SolverResult[] = []
   for (const core of cores) {

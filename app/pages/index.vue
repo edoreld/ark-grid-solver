@@ -196,7 +196,7 @@ async function calculate() {
   isCalculating.value = true
   showResults.value = false
 
-  await new Promise(resolve => setTimeout(resolve, 10))
+  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 50)))
 
   try {
     results.value = solveArkGrid(cores.value, astrogems.value)
