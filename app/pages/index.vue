@@ -22,7 +22,6 @@ const activeCharacterId = ref<string>('')
 const results = ref<SolverResult[]>([])
 const showResults = ref(false)
 const isCalculating = ref(false)
-const calculationProgress = ref(0)
 const showAddGemModal = ref(false)
 const showResetModal = ref(false)
 const showAddCharacterModal = ref(false)
@@ -195,22 +194,18 @@ async function calculate() {
   if (cores.value.length === 0 || astrogems.value.length === 0) return
 
   isCalculating.value = true
-  calculationProgress.value = 0
   showResults.value = false
 
-  await new Promise(resolve => setTimeout(resolve, 50))
+  await new Promise(resolve => setTimeout(resolve, 10))
 
   try {
-    results.value = await solveArkGrid(cores.value, astrogems.value, (progress) => {
-      calculationProgress.value = progress
-    })
+    results.value = solveArkGrid(cores.value, astrogems.value)
     showResults.value = true
 
     await nextTick()
     document.getElementById('optimization-results')?.scrollIntoView({ behavior: 'smooth' })
   } finally {
     isCalculating.value = false
-    calculationProgress.value = 0
   }
 }
 
@@ -565,18 +560,6 @@ function resetAll() {
           >
             Reset All
           </UButton>
-        </div>
-        <div
-          v-if="isCalculating"
-          class="w-full max-w-md"
-        >
-          <UProgress
-            :model-value="calculationProgress"
-            size="sm"
-          />
-          <p class="text-center text-sm text-gray-500 mt-2">
-            Finding optimal assignment... {{ calculationProgress }}%
-          </p>
         </div>
       </div>
 
