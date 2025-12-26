@@ -27,7 +27,9 @@ const showResetModal = ref(false)
 const showAddCharacterModal = ref(false)
 const showDeleteCharacterModal = ref(false)
 const showDuplicateGemModal = ref(false)
-const duplicateGemInfo = ref<{ currentId: string, existingId: string, willpower: number, points: number, category: AstrogemCategory, existingQuantity: number } | null>(null)
+const duplicateGemInfo = ref<{ gem: Astrogem | null, existingQuantity: number }>({ gem: null, existingQuantity: 0 })
+const pendingGemCategory = ref<AstrogemCategory | null>(null)
+const pendingUpdate = ref<{ id: string, field: keyof Astrogem, value: any } | null>(null)
 const newCharacterName = ref('')
 const editingCharacterName = ref(false)
 const editedName = ref('')
@@ -169,9 +171,58 @@ function updateCore(index: number, core: Core) {
 
 function addAstrogem(category: AstrogemCategory) {
   if (!activeCharacter.value) return
-  activeCharacter.value.astrogems.push(createEmptyAstrogem(category))
+  const newGem = createEmptyAstrogem(category)
+  activeCharacter.value.astrogems.push(newGem)
   showResults.value = false
   showAddGemModal.value = false
+}
+
+function confirmAddToQuantity() {
+  if (!activeCharacter.value || !duplicateGemInfo.value.gem || !pendingUpdate.value) return
+  
+  // Find the existing duplicate gem
+  const existingGem = activeCharacter.value.astrogems.find(
+    g => g.category === duplicateGemInfo.value.gem!.category &&
+         g.willpower === duplicateGemInfo.value.gem!.willpower &&
+         g.points === duplicateGemInfo.value.gem!.points &&
+         g.willpower !== null &&
+         g.points !== null &&
+         g.id !== duplicateGemInfo.value.gem!.id
+  )
+  
+  if (existingGem) {
+    existingGem.quantity = (existingGem.quantity ?? 1) + 1
+    // Remove the gem that was being edited
+    const index = activeCharacter.value.astrogems.findIndex(g => g.id === pendingUpdate.value!.id)
+    if (index !== -1) {
+      activeCharacter.value.astrogems.splice(index, 1)
+    }
+    showResults.value = false
+  }
+  
+  showDuplicateGemModal.value = false
+  duplicateGemInfo.value = { gem: null, existingQuantity: 0 }
+  pendingGemCategory.value = null
+  pendingUpdate.value = null
+}
+
+function cancelDuplicateAndAddNew() {
+  if (!activeCharacter.value || !pendingUpdate.value) return
+  
+  // Apply the pending update
+  const index = activeCharacter.value.astrogems.findIndex(g => g.id === pendingUpdate.value.id)
+  if (index !== -1) {
+    activeCharacter.value.astrogems[index] = {
+      ...activeCharacter.value.astrogems[index],
+      [pendingUpdate.value.field]: pendingUpdate.value.value
+    }
+    showResults.value = false
+  }
+  
+  showDuplicateGemModal.value = false
+  duplicateGemInfo.value = { gem: null, existingQuantity: 0 }
+  pendingGemCategory.value = null
+  pendingUpdate.value = null
 }
 
 function removeAstrogemById(id: string) {
@@ -197,91 +248,59 @@ function updateAstrogemField(id: string, field: keyof Astrogem, value: any) {
   const index = activeCharacter.value.astrogems.findIndex(g => g.id === id)
   if (index === -1) return
   
-  const updatedGem = {
-    ...activeCharacter.value.astrogems[index],
-    [field]: value
-  }
+  const gem = activeCharacter.value.astrogems[index]
+  const newValue = field === 'willpower' || field === 'points' 
+    ? (value === '' || value === null ? null : Number(value) || null)
+    : value
   
-  // Check for duplicates when both willpower and points are set (and both > 0)
-  if ((field === 'willpower' || field === 'points') && updatedGem.willpower > 0 && updatedGem.points > 0) {
-    const duplicate = activeCharacter.value.astrogems.find(
-      g => g.id !== id &&
-           g.category === updatedGem.category &&
-           g.willpower === updatedGem.willpower &&
-           g.points === updatedGem.points
-    )
+  // Check for duplicates when both willpower and points are set
+  if ((field === 'willpower' || field === 'points') && newValue !== null) {
+    const willpower = field === 'willpower' ? newValue : gem.willpower
+    const points = field === 'points' ? newValue : gem.points
     
-    if (duplicate) {
-      // Store info for confirmation modal
-      duplicateGemInfo.value = {
-        currentId: id,
-        existingId: duplicate.id,
-        willpower: updatedGem.willpower,
-        points: updatedGem.points,
-        category: updatedGem.category,
-        existingQuantity: duplicate.quantity ?? 1
+    // Only check if both values are now set and valid
+    if (willpower !== null && points !== null && willpower > 0 && points > 0) {
+      const duplicateGem = activeCharacter.value.astrogems.find(
+        (g, idx) => idx !== index &&
+                    g.category === gem.category &&
+                    g.willpower === willpower &&
+                    g.points === points &&
+                    g.willpower !== null &&
+                    g.points !== null
+      )
+      
+      if (duplicateGem) {
+        // Store the gem being edited and duplicate info
+        duplicateGemInfo.value = {
+          gem: { ...gem, id, willpower, points },
+          existingQuantity: duplicateGem.quantity ?? 1
+        }
+        pendingGemCategory.value = gem.category
+        pendingUpdate.value = { id, field, value: newValue }
+        showDuplicateGemModal.value = true
+        // Don't update the field yet - wait for user decision
+        return
       }
-      showDuplicateGemModal.value = true
-      return // Don't update yet, wait for user confirmation
     }
   }
   
-  // No duplicate found, proceed with update
-  activeCharacter.value.astrogems[index] = updatedGem
-  showResults.value = false
-}
-
-function mergeDuplicateGem() {
-  if (!activeCharacter.value || !duplicateGemInfo.value) return
-  
-  const { currentId, existingId, existingQuantity } = duplicateGemInfo.value
-  
-  // Find the existing gem and increment its quantity
-  const existingIndex = activeCharacter.value.astrogems.findIndex(g => g.id === existingId)
-  if (existingIndex !== -1) {
-    activeCharacter.value.astrogems[existingIndex].quantity = (existingQuantity + 1)
+  // No duplicate, update normally
+  activeCharacter.value.astrogems[index] = {
+    ...gem,
+    [field]: newValue
   }
-  
-  // Remove the duplicate gem
-  const currentIndex = activeCharacter.value.astrogems.findIndex(g => g.id === currentId)
-  if (currentIndex !== -1) {
-    activeCharacter.value.astrogems.splice(currentIndex, 1)
-  }
-  
   showResults.value = false
-  showDuplicateGemModal.value = false
-  duplicateGemInfo.value = null
-}
-
-function keepDuplicateGem() {
-  if (!activeCharacter.value || !duplicateGemInfo.value) return
-  
-  const { currentId, willpower, points } = duplicateGemInfo.value
-  
-  // Update the gem with the values (user wants to keep it separate)
-  const index = activeCharacter.value.astrogems.findIndex(g => g.id === currentId)
-  if (index !== -1) {
-    activeCharacter.value.astrogems[index] = {
-      ...activeCharacter.value.astrogems[index],
-      willpower,
-      points
-    }
-  }
-  
-  showResults.value = false
-  showDuplicateGemModal.value = false
-  duplicateGemInfo.value = null
 }
 
 async function calculate() {
-  if (cores.value.length === 0 || astrogems.value.length === 0) return
+  if (cores.value.length === 0 || validAstrogems.value.length === 0) return
 
   isCalculating.value = true
   showResults.value = false
 
   try {
     const plainCores = JSON.parse(JSON.stringify(cores.value))
-    const plainAstrogems = JSON.parse(JSON.stringify(astrogems.value))
+    const plainAstrogems = JSON.parse(JSON.stringify(validAstrogems.value))
     results.value = await solveArkGridAsync(plainCores, plainAstrogems, baseURL)
     showResults.value = true
 
@@ -337,18 +356,32 @@ const sortedAstrogems = computed(() => {
   // Primary sort: Willpower
   if (willpowerSort.value === 'asc') {
     gems.sort((a, b) => {
+      // Handle null values - nulls go to the end
+      if (a.willpower === null && b.willpower === null) return 0
+      if (a.willpower === null) return 1
+      if (b.willpower === null) return -1
       const willDiff = a.willpower - b.willpower
       if (willDiff !== 0) return willDiff
       // Secondary sort: Points
+      if (a.points === null && b.points === null) return 0
+      if (a.points === null) return 1
+      if (b.points === null) return -1
       if (pointsSort.value === 'asc') return a.points - b.points
       if (pointsSort.value === 'desc') return b.points - a.points
       return 0
     })
   } else {
     gems.sort((a, b) => {
+      // Handle null values - nulls go to the end
+      if (a.willpower === null && b.willpower === null) return 0
+      if (a.willpower === null) return 1
+      if (b.willpower === null) return -1
       const willDiff = b.willpower - a.willpower
       if (willDiff !== 0) return willDiff
       // Secondary sort: Points
+      if (a.points === null && b.points === null) return 0
+      if (a.points === null) return 1
+      if (b.points === null) return -1
       if (pointsSort.value === 'asc') return a.points - b.points
       if (pointsSort.value === 'desc') return b.points - a.points
       return 0
@@ -367,16 +400,28 @@ function startEditingGem(gemId: string) {
     // Apply current sorting to get the order
     if (willpowerSort.value === 'asc') {
       currentGems.sort((a, b) => {
+        if (a.willpower === null && b.willpower === null) return 0
+        if (a.willpower === null) return 1
+        if (b.willpower === null) return -1
         const willDiff = a.willpower - b.willpower
         if (willDiff !== 0) return willDiff
+        if (a.points === null && b.points === null) return 0
+        if (a.points === null) return 1
+        if (b.points === null) return -1
         if (pointsSort.value === 'asc') return a.points - b.points
         if (pointsSort.value === 'desc') return b.points - a.points
         return 0
       })
     } else {
       currentGems.sort((a, b) => {
+        if (a.willpower === null && b.willpower === null) return 0
+        if (a.willpower === null) return 1
+        if (b.willpower === null) return -1
         const willDiff = b.willpower - a.willpower
         if (willDiff !== 0) return willDiff
+        if (a.points === null && b.points === null) return 0
+        if (a.points === null) return 1
+        if (b.points === null) return -1
         if (pointsSort.value === 'asc') return a.points - b.points
         if (pointsSort.value === 'desc') return b.points - a.points
         return 0
@@ -416,6 +461,12 @@ const chaosAstrogems = computed(() => astrogems.value.filter(g => g.category ===
 
 const totalAstrogemCount = computed(() => {
   return astrogems.value.reduce((sum, gem) => sum + (gem.quantity ?? 1), 0)
+})
+
+const validAstrogems = computed(() => {
+  return astrogems.value.filter(
+    g => g.willpower !== null && g.points !== null && g.willpower > 0 && g.points > 0
+  )
 })
 
 const totalScore = computed(() => {
@@ -730,31 +781,31 @@ function resetAll() {
                     <td class="py-3 px-4">
                       <UInput
                         type="number"
-                        :model-value="gem.willpower"
-                        :min="0"
+                        :model-value="gem.willpower ?? ''"
+                        :min="3"
                         :max="10"
                         size="sm"
                         class="w-24"
-                        placeholder="Will"
+                        placeholder="—"
                         @mousedown="startEditingGem(gem.id)"
                         @focus="startEditingGem(gem.id)"
                         @blur="stopEditingGem(gem.id)"
-                        @update:model-value="updateAstrogemField(gem.id, 'willpower', Number($event) || 0)"
+                        @update:model-value="updateAstrogemField(gem.id, 'willpower', $event)"
                       />
                     </td>
                     <td class="py-3 px-4">
                       <UInput
                         type="number"
-                        :model-value="gem.points"
-                        :min="0"
+                        :model-value="gem.points ?? ''"
+                        :min="1"
                         :max="5"
                         size="sm"
                         class="w-24"
-                        placeholder="Pts"
+                        placeholder="—"
                         @mousedown="startEditingGem(gem.id)"
                         @focus="startEditingGem(gem.id)"
                         @blur="stopEditingGem(gem.id)"
-                        @update:model-value="updateAstrogemField(gem.id, 'points', Number($event) || 0)"
+                        @update:model-value="updateAstrogemField(gem.id, 'points', $event)"
                       />
                     </td>
                     <td class="py-3 px-4">
@@ -883,19 +934,13 @@ function resetAll() {
 
       <UModal v-model:open="showDuplicateGemModal">
         <template #content>
-          <UCard>
+          <UCard :ui="{ root: 'border-2 border-yellow-500' }">
             <template #header>
-              <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-yellow-600 dark:text-yellow-400">
+                <UIcon name="i-lucide-alert-circle" />
                 <h3 class="text-lg font-semibold">
                   Duplicate Astrogem Detected
                 </h3>
-                <UButton
-                  icon="i-lucide-x"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  @click="keepDuplicateGem"
-                />
               </div>
             </template>
 
@@ -903,40 +948,51 @@ function resetAll() {
               <p class="text-gray-600 dark:text-gray-400">
                 You are about to add a gem that already exists:
               </p>
-              <div class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div
+                v-if="duplicateGemInfo.gem"
+                class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+              >
                 <div class="flex items-center gap-2 mb-2">
                   <UIcon
-                    name="i-lucide-gem"
-                    :class="duplicateGemInfo?.category === 'Order' ? 'text-red-500' : 'text-blue-500'"
+                    :name="duplicateGemInfo.gem.category === 'Order' ? 'i-lucide-gem' : 'i-lucide-gem'"
+                    :class="duplicateGemInfo.gem.category === 'Order' ? 'text-red-500' : 'text-blue-500'"
                     class="size-5"
                   />
-                  <span class="font-medium">
-                    {{ duplicateGemInfo?.category }} - Willpower: {{ duplicateGemInfo?.willpower }}, Points: {{ duplicateGemInfo?.points }}
+                  <span
+                    class="font-medium"
+                    :class="duplicateGemInfo.gem.category === 'Order' ? 'text-red-500' : 'text-blue-500'"
+                  >
+                    {{ duplicateGemInfo.gem.category }}
                   </span>
                 </div>
-                <p class="text-sm text-gray-600 dark:text-gray-400">
-                  You currently have <span class="font-semibold">{{ duplicateGemInfo?.existingQuantity }}</span> of that type.
-                </p>
+                <div class="text-sm text-gray-600 dark:text-gray-400">
+                  <div>Willpower: <span class="font-medium">{{ duplicateGemInfo.gem.willpower }}</span></div>
+                  <div>Points: <span class="font-medium">{{ duplicateGemInfo.gem.points }}</span></div>
+                </div>
               </div>
               <p class="text-gray-600 dark:text-gray-400">
+                You currently have <span class="font-semibold">{{ duplicateGemInfo.existingQuantity }}</span> of this type.
                 Would you like to add to its quantity instead?
               </p>
-              <div class="flex gap-3 justify-end">
+            </div>
+
+            <template #footer>
+              <div class="flex justify-end gap-3">
                 <UButton
                   color="neutral"
                   variant="outline"
-                  @click="keepDuplicateGem"
+                  @click="cancelDuplicateAndAddNew"
                 >
-                  Keep Separate
+                  Add New Anyway
                 </UButton>
                 <UButton
                   color="primary"
-                  @click="mergeDuplicateGem"
+                  @click="confirmAddToQuantity"
                 >
                   Add to Quantity
                 </UButton>
               </div>
-            </div>
+            </template>
           </UCard>
         </template>
       </UModal>
@@ -947,7 +1003,7 @@ function resetAll() {
             size="xl"
             icon="i-lucide-calculator"
             :loading="isCalculating"
-            :disabled="cores.length === 0 || astrogems.length === 0"
+            :disabled="cores.length === 0 || validAstrogems.length === 0"
             @click="calculate"
           >
             Calculate Optimal Assignment

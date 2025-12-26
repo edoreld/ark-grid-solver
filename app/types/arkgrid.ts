@@ -6,8 +6,8 @@ export interface Astrogem {
   id: string
   name: string
   category: AstrogemCategory
-  willpower: number
-  points: number
+  willpower: number | null
+  points: number | null
   quantity?: number
 }
 
@@ -90,8 +90,8 @@ export function createEmptyAstrogem(category: AstrogemCategory): Astrogem {
     id: generateId(),
     name: '',
     category,
-    willpower: 3,
-    points: 3,
+    willpower: null,
+    points: null,
     quantity: 1
   }
 }
