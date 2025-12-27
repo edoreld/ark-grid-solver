@@ -29,7 +29,7 @@ const showDeleteCharacterModal = ref(false)
 const showDuplicateGemModal = ref(false)
 const duplicateGemInfo = ref<{ gem: Astrogem | null, existingQuantity: number }>({ gem: null, existingQuantity: 0 })
 const pendingGemCategory = ref<AstrogemCategory | null>(null)
-const pendingUpdate = ref<{ id: string, field: keyof Astrogem, value: any } | null>(null)
+const pendingUpdate = ref<{ id: string, field: keyof Astrogem, value: number | null | string } | null>(null)
 const newCharacterName = ref('')
 const editingCharacterName = ref(false)
 const editedName = ref('')
@@ -179,17 +179,17 @@ function addAstrogem(category: AstrogemCategory) {
 
 function confirmAddToQuantity() {
   if (!activeCharacter.value || !duplicateGemInfo.value.gem || !pendingUpdate.value) return
-  
+
   // Find the existing duplicate gem
   const existingGem = activeCharacter.value.astrogems.find(
-    g => g.category === duplicateGemInfo.value.gem!.category &&
-         g.willpower === duplicateGemInfo.value.gem!.willpower &&
-         g.points === duplicateGemInfo.value.gem!.points &&
-         g.willpower !== null &&
-         g.points !== null &&
-         g.id !== duplicateGemInfo.value.gem!.id
+    g => g.category === duplicateGemInfo.value.gem!.category
+         && g.willpower === duplicateGemInfo.value.gem!.willpower
+         && g.points === duplicateGemInfo.value.gem!.points
+         && g.willpower !== null
+         && g.points !== null
+         && g.id !== duplicateGemInfo.value.gem!.id
   )
-  
+
   if (existingGem) {
     existingGem.quantity = (existingGem.quantity ?? 1) + 1
     // Remove the gem that was being edited
@@ -199,7 +199,7 @@ function confirmAddToQuantity() {
     }
     showResults.value = false
   }
-  
+
   showDuplicateGemModal.value = false
   duplicateGemInfo.value = { gem: null, existingQuantity: 0 }
   pendingGemCategory.value = null
@@ -208,7 +208,7 @@ function confirmAddToQuantity() {
 
 function cancelDuplicateAndAddNew() {
   if (!activeCharacter.value || !pendingUpdate.value) return
-  
+
   // Apply the pending update
   const index = activeCharacter.value.astrogems.findIndex(g => g.id === pendingUpdate.value.id)
   if (index !== -1) {
@@ -218,7 +218,7 @@ function cancelDuplicateAndAddNew() {
     }
     showResults.value = false
   }
-  
+
   showDuplicateGemModal.value = false
   duplicateGemInfo.value = { gem: null, existingQuantity: 0 }
   pendingGemCategory.value = null
@@ -234,41 +234,32 @@ function removeAstrogemById(id: string) {
   }
 }
 
-function updateAstrogemById(id: string, gem: Astrogem) {
-  if (!activeCharacter.value) return
-  const index = activeCharacter.value.astrogems.findIndex(g => g.id === id)
-  if (index !== -1) {
-    activeCharacter.value.astrogems[index] = gem
-    showResults.value = false
-  }
-}
-
-function updateAstrogemField(id: string, field: keyof Astrogem, value: any) {
+function updateAstrogemField(id: string, field: keyof Astrogem, value: number | string | null) {
   if (!activeCharacter.value) return
   const index = activeCharacter.value.astrogems.findIndex(g => g.id === id)
   if (index === -1) return
-  
+
   const gem = activeCharacter.value.astrogems[index]
-  const newValue = field === 'willpower' || field === 'points' 
+  const newValue = field === 'willpower' || field === 'points'
     ? (value === '' || value === null ? null : Number(value) || null)
     : value
-  
+
   // Check for duplicates when both willpower and points are set
   if ((field === 'willpower' || field === 'points') && newValue !== null) {
     const willpower = field === 'willpower' ? newValue : gem.willpower
     const points = field === 'points' ? newValue : gem.points
-    
+
     // Only check if both values are now set and valid
     if (willpower !== null && points !== null && willpower > 0 && points > 0) {
       const duplicateGem = activeCharacter.value.astrogems.find(
-        (g, idx) => idx !== index &&
-                    g.category === gem.category &&
-                    g.willpower === willpower &&
-                    g.points === points &&
-                    g.willpower !== null &&
-                    g.points !== null
+        (g, idx) => idx !== index
+                    && g.category === gem.category
+                    && g.willpower === willpower
+                    && g.points === points
+                    && g.willpower !== null
+                    && g.points !== null
       )
-      
+
       if (duplicateGem) {
         // Store the gem being edited and duplicate info
         duplicateGemInfo.value = {
@@ -283,7 +274,7 @@ function updateAstrogemField(id: string, field: keyof Astrogem, value: any) {
       }
     }
   }
-  
+
   // No duplicate, update normally
   activeCharacter.value.astrogems[index] = {
     ...gem,
@@ -326,13 +317,13 @@ const filteredAstrogems = computed(() => {
   } else if (astrogemFilter.value === 'chaos') {
     gems = gems.filter(g => g.category === 'Chaos')
   }
-  
+
   return gems
 })
 
 const sortedAstrogems = computed(() => {
   const gems = [...filteredAstrogems.value]
-  
+
   // If any gem is being edited, preserve their current order
   if (editingGemIds.value.size > 0) {
     // Use preserved order if available
@@ -347,12 +338,12 @@ const sortedAstrogems = computed(() => {
     // If no preserved order yet, return as-is (will be preserved on next render)
     return gems
   }
-  
+
   // Clear preserved order when not editing
   if (preservedOrder.value.size > 0) {
     preservedOrder.value.clear()
   }
-  
+
   // Primary sort: Willpower
   if (willpowerSort.value === 'asc') {
     gems.sort((a, b) => {
@@ -387,7 +378,7 @@ const sortedAstrogems = computed(() => {
       return 0
     })
   }
-  
+
   return gems
 })
 
@@ -396,7 +387,7 @@ function startEditingGem(gemId: string) {
   if (editingGemIds.value.size === 0) {
     // Get the current sorted order before we mark anything as editing
     const currentGems = filteredAstrogems.value.slice()
-    
+
     // Apply current sorting to get the order
     if (willpowerSort.value === 'asc') {
       currentGems.sort((a, b) => {
@@ -448,7 +439,7 @@ function stopEditingGem(gemId: string) {
     }
     // No input is focused, safe to remove from editing set
     editingGemIds.value.delete(gemId)
-    
+
     // If no gems are being edited anymore, clear preserved order
     if (editingGemIds.value.size === 0) {
       preservedOrder.value.clear()
@@ -753,8 +744,7 @@ function resetAll() {
                     <th class="text-left py-3 px-4 font-semibold text-sm">
                       QTY
                     </th>
-                    <th class="text-right py-3 px-4 font-semibold text-sm w-16">
-                    </th>
+                    <th class="text-right py-3 px-4 font-semibold text-sm w-16" />
                   </tr>
                 </thead>
                 <tbody>
