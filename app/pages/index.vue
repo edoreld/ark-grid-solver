@@ -210,12 +210,14 @@ function cancelDuplicateAndAddNew() {
   if (!activeCharacter.value || !pendingUpdate.value) return
 
   // Apply the pending update
-  const index = activeCharacter.value.astrogems.findIndex(g => g.id === pendingUpdate.value.id)
+  const update = pendingUpdate.value
+  const index = activeCharacter.value.astrogems.findIndex(g => g.id === update.id)
   if (index !== -1) {
+    const currentGem = activeCharacter.value.astrogems[index]
     activeCharacter.value.astrogems[index] = {
-      ...activeCharacter.value.astrogems[index],
-      [pendingUpdate.value.field]: pendingUpdate.value.value
-    }
+      ...currentGem,
+      [update.field]: update.value
+    } as Astrogem
     showResults.value = false
   }
 
@@ -240,17 +242,19 @@ function updateAstrogemField(id: string, field: keyof Astrogem, value: number | 
   if (index === -1) return
 
   const gem = activeCharacter.value.astrogems[index]
+  if (!gem) return
+
   const newValue = field === 'willpower' || field === 'points'
     ? (value === '' || value === null ? null : Number(value) || null)
     : value
 
   // Check for duplicates when both willpower and points are set
-  if ((field === 'willpower' || field === 'points') && newValue !== null) {
+  if ((field === 'willpower' || field === 'points') && newValue !== null && typeof newValue === 'number') {
     const willpower = field === 'willpower' ? newValue : gem.willpower
     const points = field === 'points' ? newValue : gem.points
 
     // Only check if both values are now set and valid
-    if (willpower !== null && points !== null && willpower > 0 && points > 0) {
+    if (willpower !== null && points !== null && typeof willpower === 'number' && typeof points === 'number' && willpower > 0 && points > 0) {
       const duplicateGem = activeCharacter.value.astrogems.find(
         (g, idx) => idx !== index
           && g.category === gem.category
@@ -263,7 +267,7 @@ function updateAstrogemField(id: string, field: keyof Astrogem, value: number | 
       if (duplicateGem) {
         // Store the gem being edited and duplicate info
         duplicateGemInfo.value = {
-          gem: { ...gem, id, willpower, points },
+          gem: { ...gem, id, willpower: willpower as number, points: points as number },
           existingQuantity: duplicateGem.quantity ?? 1
         }
         pendingGemCategory.value = gem.category
@@ -279,7 +283,7 @@ function updateAstrogemField(id: string, field: keyof Astrogem, value: number | 
   activeCharacter.value.astrogems[index] = {
     ...gem,
     [field]: newValue
-  }
+  } as Astrogem
   showResults.value = false
 }
 
@@ -676,7 +680,7 @@ function resetAll() {
                   All
                 </UButton>
                 <UButton
-                  :color="astrogemFilter === 'order' ? 'red' : 'neutral'"
+                  :color="astrogemFilter === 'order' ? 'error' : 'neutral'"
                   :variant="astrogemFilter === 'order' ? 'solid' : 'outline'"
                   size="xs"
                   @click="astrogemFilter = 'order'"
@@ -684,7 +688,7 @@ function resetAll() {
                   Order
                 </UButton>
                 <UButton
-                  :color="astrogemFilter === 'chaos' ? 'blue' : 'neutral'"
+                  :color="astrogemFilter === 'chaos' ? 'primary' : 'neutral'"
                   :variant="astrogemFilter === 'chaos' ? 'solid' : 'outline'"
                   size="xs"
                   @click="astrogemFilter = 'chaos'"

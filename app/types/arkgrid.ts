@@ -109,11 +109,11 @@ export function getBreakpoints(rarity: CoreRarity): number[] {
 }
 
 export function calculateTotalWillpower(astrogems: Astrogem[]): number {
-  return astrogems.reduce((sum, gem) => sum + gem.willpower, 0)
+  return astrogems.reduce((sum, gem) => sum + (gem.willpower ?? 0), 0)
 }
 
 export function calculateTotalPoints(astrogems: Astrogem[]): number {
-  return astrogems.reduce((sum, gem) => sum + gem.points, 0)
+  return astrogems.reduce((sum, gem) => sum + (gem.points ?? 0), 0)
 }
 
 export function getBreakpointsHit(points: number, rarity: CoreRarity): number[] {
